@@ -1,0 +1,48 @@
+name: macOS build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: swift --version
+      - name: Test timer and progression
+        run: ./test.sh
+      - name: Build and ad-hoc sign app
+        run: ./build.sh
+      - name: Verify signature and package
+        run: |
+          codesign --verify --deep --strict build/Pomo.app
+          ditto -c -k --sequesterRsrc --keepParent build/Pomo.app build/Pomo-${{ matrix.arch }}.zip
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pomo-${{ matrix.arch }}
+          path: build/Pomo-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 14
